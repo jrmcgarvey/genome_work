@@ -35,7 +35,8 @@ short_distances = {}
 long_distances = {}
 
 for t_name in ["1Ap", "1Aq", "2Ap", "2Aq", "1Bp", "1Bq", "2Bp", "2Bq"]:
-    telomere_names.remove(t_name)
+    if t_name in telomere_names:
+        telomere_names.remove(t_name)
 
 for t_name in telomere_names:
     if t_name != "Y1p":
@@ -52,6 +53,8 @@ for scankey in scans:
         t_mere = scan[t_mere_key]
 
         if t_mere["x"]**2 + t_mere["y"]**2 > 25:
+            print("got here: " + t_mere_key + " " + scankey)
+            print(t_mere)
             bad_values.append(t_mere_key) # throw out the bad values for now
         else:
             t_mere["z1"] = math.sqrt(25 - t_mere["x"]**2 - t_mere["y"]**2)
@@ -282,7 +285,7 @@ for scankey in scans:
         # but if it does we can fix it by reference to some other telomere
         print("found a bad scan")
         bad_scans.append(scankey)
-    elif t_mere["z_sign"] == "ambiguous" and sign_of(t_mere["loc"][2]) != sign_of(t_mere["alt_loc"][2]):
+    elif t_mere["z_sign"] == "ambiguous" and sign_of(t_mere["loc"][2]) != sign_of(t_mere["loc_alt"][2]):
         print("found another bad scan")
         bad_scans.append(scankey)
     elif not sign_of(t_mere["loc"][2]): # if the telomere z is negative, we have to reflect it
