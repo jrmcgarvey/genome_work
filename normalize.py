@@ -30,6 +30,8 @@ with open(sys.argv[1]) as csvfile:
                         t_values["x"] = float(str)
                 elif row_pos>1 and (row_pos-2) % 5 == 0 and not t_name in skip_these:
                     t_values["y"] = float(str)
+                elif row_pos>2 and (row_pos-3) % 5 == 0 and not t_name in skip_these:
+                    t_values["real_z"] = float(str)
                 row_pos += 1
         row_count += 1
 #  print(scans)
@@ -46,9 +48,10 @@ for scankey in scans:
     for t_name in scan:
         t_mere = scan[t_name]
         if t_mere["x"]**2 + t_mere["y"]**2 > 25:
+            len = t_mere["x"]**2 + t_mere["y"]**2
             x = t_mere["x"]
             y = t_mere["y"]
-            print(f"found bad point in scan {scankey} {t_name} {x} {y}")
+            print(f"found bad point in scan {scankey} {t_name} {x} {y} {len} ")
             bad_points.append(t_name)
     for t_name in bad_points:
         scan.pop(t_name)
@@ -72,6 +75,9 @@ for scankey in scans:
     for t_name in scan:
         t_mere = scan[t_name]
         t_mere["z"] = math.sqrt(25 - t_mere["x"]**2 - t_mere["y"]**2)
+        if abs(t_mere["z"]-abs(t_mere["real_z"])) >0.1:
+            print(t_mere)
+            raise Exception("big error here!")
 
 # We will assume that Y1p has a z value that is positive.  This might be wrong, or at least,
 # inconsistent with the others, in which case we reflect the scan at the end.
@@ -79,28 +85,33 @@ for scankey in scans:
 # here are some random choices we might adjust
 refpoint1 = "Y1p"
 pts_to_agree = 1
-experimental_error = 0
+experimental_error = 0.5
+reflection = 1
 
 for scankey in scans:
     scan = scans[scankey]
     scan[refpoint1]["z_sign"] = "positive"  # might be false -- in case we reflect at the end
     scan[refpoint1]["arbitrary"] = True
+    if scan[refpoint1]["real_z"] < 0:
+        reflection = -1
     for t_name in scan:
         if t_name != refpoint1:
             scan[t_name]["z_sign"] = "ambiguous" # all others ambiguous at the start
 
 count = 0
 ambiguous = 0
+def sign_of(n):
+    if n>=0:
+        return True
+    return False
 def eliminate_ambiguous(refpoint):
     global count
     global ambiguous
     # Ok, choose the other values for z_sign that best match.  See logic below
     distances = {}
     for scankey in scans:
-        print(f"at 100 {scankey}")
         scan = scans[scankey]
         if scan.get(refpoint) == None:
-            print("no refpoint")
             continue
         refp = deepcopy(scan[refpoint])
         if refp["z_sign"] == "ambiguous": # unlikely to resolve anything
@@ -114,44 +125,45 @@ def eliminate_ambiguous(refpoint):
                     all_ambiguous = False
                     break
             if all_ambiguous:
-                print("got here")
                 scan[refpoint]["z_sign"] = "positive"
                 scan[refpoint]["arbitrary"] = True
                 scan[arbitrary]["z_sign"] = "ambiguous"
                 scan[arbitrary].pop("arbitrary")
             else:
-                print("something not ambiguous")
                 continue    
         if refp["z_sign"] == "negative":  # I think this is not right
-            print("at line 125")
             continue # for now 
-        print("got here too")  
-        print(scan)   
+
         for t_name in scan:
-            z_sign = scan[t_name]["z_sign"]
-            print(f"here 129 {t_name} {scankey} {refpoint} {z_sign}")   
-            if t_name != refpoint:     
-                print("distances")
+           # z_sign = scan[t_name]["z_sign"]   
+            if t_name != refpoint and scan[t_name]["z_sign"] == "ambiguous":
                 if distances.get(t_name) == None:
                     distances[t_name] = []
-                print("at line 131")
                 t_mere = scan[t_name]
-                distance1 = (refp["x"] - t_mere["x"])**2 + (refp["y"] - t_mere["y"])**2 \
-                        + (refp["z"] - t_mere["z"])**2
-                distance2 = (refp["x"] - t_mere["x"])**2 + (refp["y"] - t_mere["y"])**2 \
-                        + (refp["z"] + t_mere["z"])**2
+                distance1 = (refp["x"] - t_mere["x"])**2 + (refp["y"] - t_mere["y"])**2 + (refp["z"] - t_mere["z"])**2
+                distance2 = (refp["x"] - t_mere["x"])**2 + (refp["y"] - t_mere["y"])**2 + (refp["z"] + t_mere["z"])**2
                 # if refp["z_sign"] == "negative": # the first values will be longer in this case
                 #     distance_save = distance2
                 #     distance2 = distance1
                 #     distance1 = distance_save
                 distance3 = distance2 - distance1
-                print("at line 142")
                 distances[t_name].append((scankey, distance3, distance1, distance2)) 
-                print(distances)
+                if scankey == "test20" and t_name== "Xp":
+                    print(distance1)
+                    print(distance2)
+                    print(t_mere["z"])
+                    print(refp["z"])
 
-    print(distances)
     for t_name in distances:
-        distances[t_name].sort(key = key_for_sort)  
+        if (t_name=="Xp"):
+            for distance in distances[t_name]:
+                if distance[0] == "test20":
+                    print(distance)
+        distances[t_name].sort(key = key_for_sort) 
+        if (t_name=="Xp"):
+            for distance in distances[t_name]:
+                if distance[0] == "test20":
+                    print(distance)
         # The points at the top of this sorted list will be the ones closest to the edge of
         # the circle, and therefore the ones for which the computed distance will vary
         # the least depending on the sign of the z_value.  It is unlikely that distances
@@ -159,11 +171,53 @@ def eliminate_ambiguous(refpoint):
         # are correct.  It is unlikely that distances greater than experimental error
         # plus the greater of these two distances are correct.  So, we can eliminate
         # some distances, but many remain ambiguous
+        found_error = False
+        compare_distance = distances[t_name][pts_to_agree-1]
         for distance in distances[t_name][pts_to_agree:]:
-            if distance[3] > distances[t_name][pts_to_agree-1][3] * (1 + experimental_error):
+            if distance[3] > compare_distance[3] and distance[2] < compare_distance[2]:
+                continue # not diagnostic, we can't tell
+            if distance[3] > compare_distance[3]  + experimental_error:
                 scans[distance[0]][t_name]["z_sign"] = "positive"
-            elif distance[2] < distances[t_name][pts_to_agree-1][2] * (1 + experimental_error):
+                if scans[distance[0]][t_name]["real_z"]*reflection < 0:
+                    found_error = True
+            elif distance[2] < distances[t_name][pts_to_agree-1][2] - experimental_error:
                 scans[distance[0]][t_name]["z_sign"] = "negative"
+                if scans[distance[0]][t_name]["real_z"]*reflection > 0:
+                    found_error = True
+            if found_error and not scans[compare_distance[0]][t_name]["z_sign"]== "ambiguous":
+                print("starting error report")
+                print(f"t_name: {t_name}")
+                print(f"distance in question: {distance}")
+                print(f"distance to compare: {compare_distance}")
+                print(reflection)
+                find_point = scans[distance[0]][t_name]
+                find_ref = scans[distance[0]][refpoint]
+                compare_point = scans[compare_distance[0]][t_name]
+                compare_ref = scans[compare_distance[0]][refpoint]
+                
+                print(f"point to find: {scans[distance[0]][t_name]}")
+                print(f"ref point: {scans[distance[0]][refpoint]}")
+                print(f"compare point: {scans[compare_distance[0]][t_name]}")
+                print(f"compare ref: {scans[compare_distance[0]][refpoint]}")
+                find_z = -abs(find_point["z"])
+                if sign_of(find_point["real_z"]):
+                    find_z = abs(find_point["z"])
+                find_rz = -abs(find_ref["z"])        
+                if sign_of(find_ref["real_z"]):
+                    find_rz = abs(find_ref["z"])
+                compare_z = -abs(compare_point["z"])
+                if sign_of(compare_point["real_z"]):
+                    compare_z = abs(compare_point["z"])
+                compare_rz = -abs(compare_ref["z"])
+                if sign_of(compare_ref["real_z"]):
+                    compare_rz = abs(compare_ref["z"])
+                fprd = (find_point["x"]-find_ref["x"])**2 + (find_point["y"] - find_ref["y"])**2 \
+                    + (find_z - find_rz)**2
+                cprd =  (compare_point["x"]-compare_ref["x"])**2 + (compare_point["y"] - compare_ref["y"])**2 \
+                    + (compare_z - compare_rz)**2               
+                print(f"actual distances for find and compare points: {fprd} {cprd}")
+                raise Exception("Something went wrong!")
+                
     count = 0
     ambiguous = 0
     for scankey in scans:
@@ -280,7 +334,7 @@ for scankey in scans:
         if t_mere["z_sign"] == "ambiguous":
             t_mere["loc_alt"] == matrix_rotate(matrix2,t_mere["loc_alt"])
     if scan["Y1p"]["loc"][1]<0:
-        print(f"probmem here in loc, scan is {scankey}")
+        print(f"problem here in loc, scan is {scankey}")
     matrix3 = first_matrix(scan["Xp"]["loc"])
     for t_name in scan:
         t_mere = scan[t_name]
@@ -292,94 +346,140 @@ for scankey in scans:
 # ok, now we need to see if reflection is necessary.  We need to find the telomere
 # for which the absolute value of the z is largest
 
-z_abs = {}
+# z_abs = {}
+# for scankey in scans:
+#     scan = scans[scankey]
+#     for t_name in scan:
+#         t_mere = scan[t_name]
+#         if t_mere["z_sign"] != "ambiguous":  
+#             if z_abs.get(t_name) == None:
+#                 z_abs[t_name] = [0,0]
+#             z_abs[t_name][0] += 1
+#             z_abs[t_name][1] += abs(t_mere["loc"][2])
+
+# z_avg=[]
+# for t_name in z_abs:
+#     z_ab = z_abs[t_name]
+#     z_avg.append((t_name,z_ab[1]/float(z_ab[0])))
+
+# z_avg.sort(reverse = True, key = key_for_sort)
+# z_max_t_name = z_avg[0][0]
+
+# # having found the largest average z, we now make sure that that is positive in each
+# # scan. If we have to change the sign, we change the sign for all the z values in the scan.
+# # This performs the reflection.
+
+
+
+# bad_scans = []
+# for scankey in scans:
+#     scan = scans[scankey]
+#     t_mere = scan.get(z_max_t_name)
+#     if t_mere == None:
+#         # hm.  This is a problem.  Of course this shouldn't happen
+#         # but if it does we can fix it by reference to some other telomere
+#         print("found a bad scan")
+#         bad_scans.append(scankey)
+#     elif t_mere["z_sign"] == "ambiguous" and sign_of(t_mere["loc"][2]) != sign_of(t_mere["loc_alt"][2]):
+#         print("found another bad scan")
+#         bad_scans.append(scankey)
+#     elif not sign_of(t_mere["loc"][2]): # if the telomere z is negative, we have to reflect it
+#         print("reflecting")
+#         for t_name in scan:
+#             t_mere = scan[t_name]
+#             new_loc = (t_mere["loc"][0],t_mere["loc"][1],-t_mere["loc"][2])
+#             t_mere["loc"] = new_loc
+#             if t_mere["z_sign"] == "ambiguous": # could happen, if a rotation put both possible locations here
+#                 new_loc = (t_mere["loc_alt"][0],t_mere["loc_alt"][1],-t_mere["loc_alt"][2])
+#                 t_mere["loc_alt"] = new_loc
+
+# # because of data errors, bad_scans will not be empty.  So we need to pick another likely value, and
+# # figure out the sign for it.  We can't just set it to positive -- instead we set it to the 
+# # sign that it has in the majority of cases already resolved.
+# if len(bad_scans) > 0:
+#     sign_count = 0
+#     for scankey in scans:
+#         if not scankey in bad_scans:
+#             scan = scans[scankey]
+#             t_mere = scan[z_avg[2][0]]
+#             if t_mere["z_sign"] == "positive":
+#                 sign_count += 1
+#             elif t_mere["z_sign"] == "negative":
+#                 sign_count -=1
+
+#     # hopefully sign_count won't be 0!
+#     if sign_count == 0:
+#         print("gee, how could that happen?")
+
+#     if sign_count > 0:
+#         for scankey in bad_scans:
+#             scan = scans[scankey]
+#             if scan[z_avg[2][0]]["z_sign"] == "ambiguous":
+#                 print("man, we ain't got no luck.")
+#             elif scan[z_avg[2][0]]["z_sign"] == "negative": #gotta flip it
+#                 for t_name in scan:
+#                     t_mere = scan[t_name]
+#                     new_loc = (t_mere["loc"][0], t_mere["loc"][1], -t_mere["loc"][2])
+#                     t_mere["loc"] = new_loc
+#     else:
+#         for scankey in bad_scans:
+#             scan = scans[scankey]
+#             if scan[z_avg[2][0]]["z_sign"] == "ambiguous":
+#                 print("man, we ain't got no luck.")
+#             elif scan[z_avg[2][0]]["z_sign"] == "positive": #gotta flip it
+#                 for t_name in scan:
+#                     t_mere = scan[t_name]
+#                     new_loc = (t_mere["loc"][0], t_mere["loc"][1], -t_mere["loc"][2])
+#                     t_mere["loc"] = new_loc
+        
+# to figure out reflections, we orient each scan so as to put the majority of points in
+# the same hemispheres
+
+t_names = ["Y1p", "Xp", "Xq", "Y1q", "Y2p", "Y2q"]
+t_counts = {}
+for t_name in t_names:
+    for scankey in scans:
+        scan = scans[scankey]
+        if scan.get(t_name) != None:
+            if scan[t_name]["z_sign"] != "ambiguous" \
+                     and abs(scan[t_name]["z"])>1.0:
+                if t_counts.get(t_name) == None:
+                    t_counts[t_name] = 0
+                if scan[t_name]["loc"][2] > 0:
+                    t_counts[t_name] += 1
+                else:
+                    t_counts[t_name] -= 1
+
+print(t_counts)
+
+to_reflect = []
+ambiguous = []
+
+def reflect(scan):
+
+
 for scankey in scans:
     scan = scans[scankey]
+    if scan.get('Xp') != None and scan["Xp"]["loc"][2] > 1:
+
+
+raise Exception("stop here")
+
+for scankey in scans:
+    scan = scans[scankey]
+    #if scan.get("Y1p") != None:
+
     for t_name in scan:
-        t_mere = scan[t_name]
-        if t_mere["z_sign"] != "ambiguous":  
-            if z_abs.get(t_name) == None:
-                z_abs[t_name] = [0,0]
-            z_abs[t_name][0] += 1
-            z_abs[t_name][1] += abs(t_mere["loc"][2])
-
-z_avg=[]
-for t_name in z_abs:
-    z_ab = z_abs[t_name]
-    z_avg.append((t_name,z_ab[1]/float(z_ab[0])))
-
-z_avg.sort(reverse = True, key = key_for_sort)
-z_max_t_name = z_avg[0][0]
-
-# having found the largest average z, we now make sure that that is positive in each
-# scan. If we have to change the sign, we change the sign for all the z values in the scan.
-# This performs the reflection.
-
-def sign_of(n):
-    if n>=0:
-        return True
-    return False
-
-bad_scans = []
-for scankey in scans:
-    scan = scans[scankey]
-    t_mere = scan.get(z_max_t_name)
-    if t_mere == None:
-        # hm.  This is a problem.  Of course this shouldn't happen
-        # but if it does we can fix it by reference to some other telomere
-        print("found a bad scan")
-        bad_scans.append(scankey)
-    elif t_mere["z_sign"] == "ambiguous" and sign_of(t_mere["loc"][2]) != sign_of(t_mere["loc_alt"][2]):
-        print("found another bad scan")
-        bad_scans.append(scankey)
-    elif not sign_of(t_mere["loc"][2]): # if the telomere z is negative, we have to reflect it
-        print("reflecting")
-        for t_name in scan:
             t_mere = scan[t_name]
             new_loc = (t_mere["loc"][0],t_mere["loc"][1],-t_mere["loc"][2])
             t_mere["loc"] = new_loc
             if t_mere["z_sign"] == "ambiguous": # could happen, if a rotation put both possible locations here
                 new_loc = (t_mere["loc_alt"][0],t_mere["loc_alt"][1],-t_mere["loc_alt"][2])
                 t_mere["loc_alt"] = new_loc
+raise Exception("stop here")
 
-# because of data errors, bad_scans will not be empty.  So we need to pick another likely value, and
-# figure out the sign for it.  We can't just set it to positive -- instead we set it to the 
-# sign that it has in the majority of cases already resolved.
-if len(bad_scans) > 0:
-    sign_count = 0
-    for scankey in scans:
-        if not scankey in bad_scans:
-            scan = scans[scankey]
-            t_mere = scan[z_avg[2][0]]
-            if t_mere["z_sign"] == "positive":
-                sign_count += 1
-            elif t_mere["z_sign"] == "negative":
-                sign_count -=1
 
-    # hopefully sign_count won't be 0!
-    if sign_count == 0:
-        print("gee, how could that happen?")
 
-    if sign_count > 0:
-        for scankey in bad_scans:
-            scan = scans[scankey]
-            if scan[z_avg[2][0]]["z_sign"] == "ambiguous":
-                print("man, we ain't got no luck.")
-            elif scan[z_avg[2][0]]["z_sign"] == "negative": #gotta flip it
-                for t_name in scan:
-                    t_mere = scan[t_name]
-                    new_loc = (t_mere["loc"][0], t_mere["loc"][1], -t_mere["loc"][2])
-                    t_mere["loc"] = new_loc
-    else:
-        for scankey in bad_scans:
-            scan = scans[scankey]
-            if scan[z_avg[2][0]]["z_sign"] == "ambiguous":
-                print("man, we ain't got no luck.")
-            elif scan[z_avg[2][0]]["z_sign"] == "positive": #gotta flip it
-                for t_name in scan:
-                    t_mere = scan[t_name]
-                    new_loc = (t_mere["loc"][0], t_mere["loc"][1], -t_mere["loc"][2])
-                    t_mere["loc"] = new_loc
         
         
 # ok, that's it for the reflections -- provided we don't find bad scans.
@@ -416,7 +516,6 @@ def find_center(scans):
     return t_mere_centers
 
 t_mere_centers = find_center(scans) # first time
-print(t_mere_centers)
 
 # Now, best fit for any points left ambiguous
 for scankey in scans:
@@ -441,8 +540,6 @@ t_mere_centers = find_center(scans)
 
 std_deviations = {}
 
-print("here")
-print(t_mere_centers["Y1p"])
 for scankey in scans:
     scan = scans[scankey]
     for t_name in scan:
@@ -471,8 +568,6 @@ for t_name in t_mere_centers:
     f.write(f"{t_name} x: {x:.2f} y: {y:.2f} z: {z:.2f} stddev: {w:.2f}\n")
 f.close()
 
-print(t_mere_centers)
-print(scans) 
     
 
 
