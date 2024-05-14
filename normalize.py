@@ -351,16 +351,31 @@ def do_flip(scan):
             t_mere["loc_alt"][2] *= -1
 # note: I won't make reference to the positive or negative values for z_sign further
 
+o_first = True
 for z_val in z_avg: 
-    t_for_reflect = z_val[0]  
+    t_for_reflect = z_val[0]
+    o_sign = 0 
+    if o_first:
+        o_sign = 1
+    if not o_first:
+        for scankey, v in scan_orientation.items():
+            if scan_orientation == "fixed" and abs(scans[scankey][t_for_reflect]["p"][2]) > 1.5:
+                o_sign = sign_of(scans[scankey][t_for_reflect]["p"][2])
+                break
+            # we want to flip subsequent scans so that t_for_reflect ends up in the
+            # same hemisphere
+        if o_sign == 0:
+            continue
+
     for scankey, scan in scans.items():
         if scan_orientation[scankey] == "ambiguous":
             if scan.get(t_for_reflect) != None:
                 t_mere = scan[t_for_reflect]
                 if t_mere["z_sign"] != "ambiguous" and abs(t_mere["p"][2])> 1.5:
-                    if sign_of(t_mere["p"][2]) < 0:
+                    if sign_of(t_mere["p"][2]) != o_sign:
                         do_flip(scan)
                     scan_orientation[scankey] = "fixed"
+                    o_first = False
     all_done = True
     for scankey in scans:
         if scan_orientation[scankey] == "ambiguous":
