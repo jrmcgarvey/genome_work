@@ -47,14 +47,17 @@ def rotate_to_y_z(y1p): # find rotation about z axis that moves point to y/z pla
         cos_theta = y1p[1] / hyp
         return [[cos_theta, -sin_theta, 0], [sin_theta,cos_theta,0],[0, 0, 1]]
     
-def center_point(points):
+def center_point(points,radius):
     sum = [0,0,0]
     for point in points:
         for i in range(3):
             sum[i] += point[i]
     for i in range(3):
         sum[i] = sum[i]/len(points)
-    return sum
+    length = math.sqrt(sum[0]**2 + sum[1]**2 + sum[2]**2)
+    for i in range(3):
+        sum[i] *= radius/length
+    return sum  # keep it on the surface of the sphere
     
 def std_dev_points(points,center):
     sum = 0

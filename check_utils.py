@@ -103,7 +103,7 @@ std_devs = []
 # print(point_versions[0])
 i = 0
 for pv in point_versions:
-    center = utils.center_point(pv)
+    center = utils.center_point(pv,5)
     # print(center)
     # print(pv[0])
     # raise Exception("stop here")
